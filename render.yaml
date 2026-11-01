@@ -1,0 +1,20 @@
+# Render.com blueprint — free web service + your managed Postgres.
+# DATABASE_URL comes from a free Neon/Supabase Postgres (create it first, paste in dashboard).
+# Free-tier web service sleeps after ~15 min idle; the DATABASE is NOT affected by sleeps.
+services:
+  - type: web
+    name: govtexammitra
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/v1/exams
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
