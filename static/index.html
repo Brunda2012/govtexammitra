@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GovtExamMitra — One Platform. Multiple Exams. Smarter Preparation.</title>
+  <meta name="description" content="AI-powered government examination preparation with Exam Overlap Intelligence: compare UPSC CSE, CAPF AC and more at micro-topic level." />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235b7cfa'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>G</text></svg>" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="#/">
+        <span class="logo">G</span>
+        <span>GovtExamMitra<span class="tag">ONE PLATFORM. MULTIPLE EXAMS. SMARTER PREPARATION.</span></span>
+      </a>
+      <button class="menu-btn" id="menuBtn" aria-label="Toggle navigation">☰</button>
+      <nav class="main-nav" id="mainNav" aria-label="Main navigation">
+        <a href="#/" data-route="/">Dashboard</a>
+        <a href="#/overlap" data-route="/overlap" class="nav-flagship">Overlap Intelligence</a>
+        <a href="#/exams" data-route="/exams">Exams</a>
+        <a href="#/syllabus" data-route="/syllabus">Syllabus</a>
+        <a href="#/practice" data-route="/practice">Practice</a>
+        <a href="#/planner" data-route="/planner">Planner</a>
+        <a href="#/mentor" data-route="/mentor">AI Mentor</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app" aria-live="polite">
+    <div class="spinner" role="status" aria-label="Loading"></div>
+  </main>
+
+  <footer class="app-footer">
+    GovtExamMitra — original, independent preparation platform. Official data attributed to UPSC/SSC/RRB notifications;
+    AI-derived mappings are labelled and require verification. Not affiliated with any government body.
+  </footer>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
