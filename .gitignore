@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.db
+test_*results*.txt
+.env
+neoncheck-tmp/
+verif*.txt
+v1.json

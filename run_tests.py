@@ -18,7 +18,8 @@ def run(module_name, out_path):
     return len(r.failures) + len(r.errors)
 
 bad = 0
-for name, out in (("test_engine", "test_results.txt"), ("test_api", "test_api_results.txt")):
+for name, out in (("test_engine", "test_results.txt"), ("test_api", "test_api_results.txt"),
+                  ("test_govsource", "test_govsource_results.txt")):
     try:
         bad += run(name, os.path.join(HERE, out))
     except Exception:

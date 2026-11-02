@@ -67,7 +67,7 @@ export async function render(root) {
       stat(s.exam_b_specific, `${shortName(state.b)}-specific`)));
 
     const pills = el("div", { class: "pillbar", role: "group", "aria-label": "Filter by classification" });
-    pills.append(pill("All", null, !state.cls && !state.group));
+    pills.append(pill("All", null, !state.cls && !state.group, () => { state.cls = null; state.group = null; load(); }));
     for (const c of CLASSES) pills.append(pill(c.replaceAll("_", " "), c, state.cls === c, () => { state.cls = state.cls === c ? null : c; state.group = null; load(); }));
     for (const g of (state.data.groups || [])) {
       pills.append(pill("Subject: " + g.group_key.replaceAll("_", " "), g.group_key, state.group === g.group_key, () => { state.group = state.group === g.group_key ? null : g.group_key; state.cls = null; load(); }));

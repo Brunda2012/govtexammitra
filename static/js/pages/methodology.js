@@ -24,7 +24,7 @@ export async function render(root) {
     el("h3", null, "API & production notes"),
     el("ul", null,
       el("li", null, "REST API versioned under /api/v1; interactive docs at /docs (OpenAPI)."),
-      el("li", null, "Single local user in this milestone; per-user data separation already enforced by user_id. JWT auth is the next milestone."),
-      el("li", null, "In-memory rate limiting (120 req/min reads, 40/min writes) — replace with a shared store for multi-worker deployments."),
+      el("li", null, "Multi-user accounts with JWT sessions (30-day tokens); every personal endpoint enforces authentication and per-user data isolation — verified by automated tests."),
+      el("li", null, "Rate limiting: 15 req/min on authentication, 120 req/min reads, 40 req/min writes (in-memory; use a shared store for multi-worker deployments)."),
       el("li", null, "Secrets live in environment variables only; nothing is committed."))));
 }

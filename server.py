@@ -6,6 +6,7 @@ the same contract a future React Native/Expo app would use.
 """
 import json
 import os
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Body, Depends, Request
@@ -41,6 +42,10 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     seed()
+    # Government source monitor: production only (scheduler threads must not run under tests).
+    if (os.environ.get("DATABASE_URL") or os.environ.get("RENDER")) and os.environ.get("GOV_INGEST_SCHEDULER", "1") != "0":
+        from app.govsource import start_scheduler
+        start_scheduler()
     admin_email = os.environ.get("ADMIN_EMAIL")
     admin_password = os.environ.get("ADMIN_PASSWORD")
     if admin_email and admin_password:
@@ -391,6 +396,258 @@ def mentor_question(payload: dict = Body(...)):
         raise HTTPException(503, "AI mentor is not configured. Set a provider API key in the server environment "
                                  "(see app/mentor.py). GovtExamMitra does not fake AI responses.")
     return result
+
+# ---------- government information centre ----------
+
+from app import govsource as gv
+import threading as _threading
+from urllib.parse import urlparse as _urlparse
+
+_INGEST_LOCK = _threading.Lock()
+
+OFFICIAL_HOST_SUFFIXES = (".gov.in", ".nic.in", "gov.in", "nic.in", ".edu.in", ".ac.in")
+
+class SourceIn(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    organisation: str = Field(min_length=2, max_length=200)
+    base_url: str = Field(min_length=8, max_length=500)
+    kind: str = Field(default="HTML", pattern="^(HTML|RSS)$")
+    listing_path: str | None = Field(default=None, max_length=300)
+    frequency_hours: int = Field(default=12, ge=1, le=168)
+    max_pages: int = Field(default=8, ge=1, le=30)
+
+class SourcePatch(BaseModel):
+    enabled: bool | None = None
+    frequency_hours: int | None = Field(default=None, ge=1, le=168)
+    max_pages: int | None = Field(default=None, ge=1, le=30)
+    listing_path: str | None = Field(default=None, max_length=300)
+
+class IngestIn(BaseModel):
+    source_id: str | None = None
+
+class DiscoverIn(BaseModel):
+    seed_url: str = Field(min_length=8, max_length=500)
+
+class ReviewIn(BaseModel):
+    decision: str = Field(pattern="^(approve|reject)$")
+    note: str | None = Field(default=None, max_length=1000)
+
+def _require_admin(user: str | None, conn) -> str:
+    if not user:
+        raise HTTPException(401, "Authentication required")
+    row = conn.execute("SELECT role FROM users WHERE id=?", (user,)).fetchone()
+    if not row or row["role"] != "admin":
+        raise HTTPException(403, "Administrator access required")
+    return user
+
+def _audit(conn, admin_id, action, target, detail=None):
+    conn.execute("INSERT INTO gov_audit_log (id, admin_id, action, target, detail, created_at) VALUES (?,?,?,?,?,?)",
+                 (uuid.uuid4().hex, admin_id, action, target, detail, gv._now()))
+
+@api.get("/gov/sources", tags=["govinfo"])
+def gov_sources():
+    conn = get_conn()
+    rows = [dict(r) for r in conn.execute(
+        "SELECT id, name, organisation, base_url, kind, enabled, frequency_hours, max_pages, "
+        "last_crawl_at, last_status FROM gov_sources ORDER BY organisation, name").fetchall()]
+    conn.close()
+    return {"sources": rows}
+
+@api.get("/gov/documents", tags=["govinfo"])
+def gov_documents(q: str | None = None, exam: str | None = None, doc_type: str | None = None,
+                  organisation: str | None = None, days: int | None = Query(None, ge=1, le=365),
+                  classification: str | None = None,
+                  limit: int = Query(20, ge=1, le=50), offset: int = Query(0, ge=0)):
+    conn = get_conn()
+    sql = ("SELECT d.id, d.url, d.title, d.organisation, d.doc_type, d.published_at, d.collected_at, "
+           "d.updated_at, d.version, d.exam_ids_json, d.classification_status, d.verification_status, "
+           "d.last_checked_at, s.name AS source_name FROM gov_documents d "
+           "JOIN gov_sources s ON s.id=d.source_id WHERE d.classification_status != 'REJECTED'")
+    args: list = []
+    if classification:
+        sql += " AND d.classification_status=?"
+        args.append(classification)
+    if q:
+        sql += " AND (d.title LIKE ? OR d.extracted_text LIKE ?)"
+        args += [f"%{q}%", f"%{q}%"]
+    if exam:
+        sql += " AND d.exam_ids_json LIKE ?"
+        args.append(f'%"{exam}"%')
+    if doc_type:
+        sql += " AND d.doc_type=?"
+        args.append(doc_type)
+    if organisation:
+        sql += " AND d.organisation LIKE ?"
+        args.append(f"%{organisation}%")
+    if days:
+        sql += " AND d.collected_at >= datetime('now', ?)"
+        args.append(f"-{days} days")
+    total = conn.execute("SELECT COUNT(*) c FROM (" + sql + ")", args).fetchone()["c"]
+    rows = [dict(r) for r in conn.execute(sql + " ORDER BY COALESCE(d.published_at, d.collected_at) DESC LIMIT ? OFFSET ?",
+                                          args + [limit, offset]).fetchall()]
+    conn.close()
+    for r in rows:
+        r["exam_ids"] = json.loads(r.pop("exam_ids_json") or "[]")
+    return {"total": total, "documents": rows}
+
+@api.get("/gov/documents/{doc_id}", tags=["govinfo"])
+def gov_document(doc_id: str):
+    conn = get_conn()
+    row = conn.execute("SELECT d.*, s.name AS source_name, s.base_url AS source_base FROM "
+                       "gov_documents d JOIN gov_sources s ON s.id=d.source_id WHERE d.id=?",
+                       (doc_id,)).fetchone()
+    conn.close()
+    if not row or row["classification_status"] == "REJECTED":
+        raise HTTPException(404, "Document not found")
+    out = dict(row)
+    out["exam_ids"] = json.loads(out.pop("exam_ids_json") or "[]")
+    return out
+
+@api.get("/gov/stats", tags=["govinfo"])
+def gov_stats():
+    conn = get_conn()
+    out = {
+        "sources_total": conn.execute("SELECT COUNT(*) c FROM gov_sources").fetchone()["c"],
+        "sources_enabled": conn.execute("SELECT COUNT(*) c FROM gov_sources WHERE enabled=1").fetchone()["c"],
+        "documents": conn.execute("SELECT COUNT(*) c FROM gov_documents WHERE classification_status != 'REJECTED'").fetchone()["c"],
+        "pending_review": conn.execute("SELECT COUNT(*) c FROM gov_documents WHERE classification_status='PENDING_REVIEW'").fetchone()["c"],
+        "last_crawl": conn.execute("SELECT MAX(finished_at) m FROM gov_crawl_log WHERE status='OK'").fetchone()["m"],
+    }
+    conn.close()
+    return out
+
+@api.post("/gov/sources", tags=["govinfo"])
+def gov_add_source(payload: SourceIn, user: str | None = Depends(current_user)):
+    conn = get_conn()
+    try:
+        admin = _require_admin(user, conn)
+        p = _urlparse(payload.base_url)
+        local_ok = os.environ.get("GOV_INGEST_ALLOW_LOCAL") == "1" and p.netloc.startswith("localhost")
+        if p.scheme not in ("http", "https") or not (p.netloc.endswith(OFFICIAL_HOST_SUFFIXES) or local_ok):
+            raise HTTPException(422, "base_url must be an official government/education domain "
+                                     "(.gov.in, .nic.in, .edu.in, .ac.in).")
+        sid = uuid.uuid4().hex
+        conn.execute("""INSERT INTO gov_sources (id, name, organisation, base_url, kind, listing_path,
+                        enabled, frequency_hours, max_pages, added_by, created_at)
+                        VALUES (?,?,?,?,?,?,1,?,?,?,?)""",
+                     (sid, payload.name, payload.organisation, payload.base_url.rstrip("/"),
+                      payload.kind, payload.listing_path, payload.frequency_hours, payload.max_pages,
+                      admin, gv._now()))
+        _audit(conn, admin, "ADD_SOURCE", sid, payload.base_url)
+        conn.commit()
+        return {"id": sid, "status": "registered"}
+    finally:
+        conn.close()
+
+@api.patch("/gov/sources/{source_id}", tags=["govinfo"])
+def gov_patch_source(source_id: str, payload: SourcePatch, user: str | None = Depends(current_user)):
+    conn = get_conn()
+    try:
+        admin = _require_admin(user, conn)
+        if not conn.execute("SELECT 1 FROM gov_sources WHERE id=?", (source_id,)).fetchone():
+            raise HTTPException(404, "Source not found")
+        for field in ("enabled", "frequency_hours", "max_pages", "listing_path"):
+            v = getattr(payload, field)
+            if v is not None:
+                conn.execute(f"UPDATE gov_sources SET {field}=? WHERE id=?", (int(v) if isinstance(v, bool) else v, source_id))
+        _audit(conn, admin, "UPDATE_SOURCE", source_id, payload.model_dump_json(exclude_none=True))
+        conn.commit()
+        return {"id": source_id, "status": "updated"}
+    finally:
+        conn.close()
+
+@api.delete("/gov/sources/{source_id}", tags=["govinfo"])
+def gov_delete_source(source_id: str, user: str | None = Depends(current_user)):
+    conn = get_conn()
+    try:
+        admin = _require_admin(user, conn)
+        if not conn.execute("SELECT 1 FROM gov_sources WHERE id=?", (source_id,)).fetchone():
+            raise HTTPException(404, "Source not found")
+        conn.execute("DELETE FROM gov_documents WHERE source_id=?", (source_id,))
+        conn.execute("DELETE FROM gov_crawl_log WHERE source_id=?", (source_id,))
+        conn.execute("DELETE FROM gov_sources WHERE id=?", (source_id,))
+        _audit(conn, admin, "DELETE_SOURCE", source_id)
+        conn.commit()
+        return {"id": source_id, "status": "deleted"}
+    finally:
+        conn.close()
+
+@api.post("/gov/ingest/run", tags=["govinfo"])
+def gov_run_ingest(payload: IngestIn, user: str | None = Depends(current_user)):
+    conn = get_conn()
+    try:
+        _require_admin(user, conn)
+    finally:
+        conn.close()
+    if payload.source_id:
+        conn = get_conn()
+        ok = conn.execute("SELECT 1 FROM gov_sources WHERE id=?", (payload.source_id,)).fetchone()
+        conn.close()
+        if not ok:
+            raise HTTPException(404, "Source not found")
+    if not _INGEST_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "An ingestion run is already in progress")
+    try:
+        t = _threading.Thread(target=gv.run_due, kwargs={"source_id": payload.source_id, "max_sources": 10},
+                              daemon=True, name="govsource-manual")
+        t.start()
+    finally:
+        _INGEST_LOCK.release()
+    return {"started": True, "note": "Ingestion runs in the background; check /gov/jobs for progress."}
+
+@api.get("/gov/jobs", tags=["govinfo"])
+def gov_jobs(limit: int = Query(30, ge=1, le=100), user: str | None = Depends(current_user)):
+    conn = get_conn()
+    _require_admin(user, conn)
+    rows = [dict(r) for r in conn.execute(
+        "SELECT c.*, s.name AS source_name FROM gov_crawl_log c LEFT JOIN gov_sources s ON s.id=c.source_id "
+        "ORDER BY c.started_at DESC LIMIT ?", (limit,)).fetchall()]
+    stats = {"runs": conn.execute("SELECT COUNT(*) c FROM gov_crawl_log").fetchone()["c"],
+             "failed": conn.execute("SELECT COUNT(*) c FROM gov_crawl_log WHERE status='ERROR'").fetchone()["c"]}
+    conn.close()
+    return {"jobs": rows, "stats": stats}
+
+@api.post("/gov/discover", tags=["govinfo"])
+def gov_discover(payload: DiscoverIn, user: str | None = Depends(current_user)):
+    conn = get_conn()
+    try:
+        _require_admin(user, conn)
+    finally:
+        conn.close()
+    p = _urlparse(payload.seed_url)
+    if p.scheme not in ("http", "https") or not p.netloc.endswith(OFFICIAL_HOST_SUFFIXES):
+        raise HTTPException(422, "seed_url must be an official government directory "
+                                 "(.gov.in, .nic.in, .edu.in, .ac.in).")
+    try:
+        return gv.discover(payload.seed_url)
+    except Exception as e:
+        raise HTTPException(502, f"Discovery fetch failed: {e}")
+
+@api.post("/gov/documents/{doc_id}/review", tags=["govinfo"])
+def gov_review_document(doc_id: str, payload: ReviewIn, user: str | None = Depends(current_user)):
+    conn = get_conn()
+    try:
+        admin = _require_admin(user, conn)
+        if not conn.execute("SELECT 1 FROM gov_documents WHERE id=?", (doc_id,)).fetchone():
+            raise HTTPException(404, "Document not found")
+        status = "ADMIN_APPROVED" if payload.decision == "approve" else "REJECTED"
+        conn.execute("UPDATE gov_documents SET classification_status=?, review_note=? WHERE id=?",
+                     (status, payload.note, doc_id))
+        _audit(conn, admin, f"DOCUMENT_{payload.decision.upper()}", doc_id, payload.note)
+        conn.commit()
+        return {"id": doc_id, "classification_status": status}
+    finally:
+        conn.close()
+
+@api.get("/gov/audit", tags=["govinfo"])
+def gov_audit(limit: int = Query(100, ge=1, le=200), user: str | None = Depends(current_user)):
+    conn = get_conn()
+    _require_admin(user, conn)
+    rows = [dict(r) for r in conn.execute(
+        "SELECT a.*, u.email AS admin_email FROM gov_audit_log a LEFT JOIN users u ON u.id=a.admin_id "
+        "ORDER BY a.created_at DESC LIMIT ?", (limit,)).fetchall()]
+    conn.close()
+    return {"audit": rows}
 
 app.include_router(api)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE, "static")), name="static")

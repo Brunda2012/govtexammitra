@@ -23,7 +23,31 @@
         <a href="#/syllabus" data-route="/syllabus">Syllabus</a>
         <a href="#/practice" data-route="/practice">Practice</a>
         <a href="#/planner" data-route="/planner">Planner</a>
-        <a href="#/mentor" data-route="/mentor">AI Mentor</a>
+        <a href="#/analytics" data-route="/analytics">Analytics</a>
+        <div class="nav-drop">
+          <button class="nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">Study Tools ▾</button>
+          <div class="nav-drop-panel">
+            <div class="nav-group">Live now</div>
+            <a href="#/govinfo" data-route="/govinfo">Government Information Centre</a>
+            <a href="#/analytics" data-route="/analytics">Performance Analytics</a>
+            <a href="#/mentor" data-route="/mentor">AI Study Mentor</a>
+            <a href="#/methodology" data-route="/methodology">Methodology &amp; Data Quality</a>
+            <a href="#/govadmin" data-route="/govadmin" style="display:none" id="govAdminLink">Source Management (Admin)</a>
+            <div class="nav-group">In development</div>
+            <a href="#/pyqs">Previous-Year Questions <span class="soon-tag">SOON</span></a>
+            <a href="#/mocks">Full-Length Mock Tests <span class="soon-tag">SOON</span></a>
+            <a href="#/mains">Mains Answer Writing <span class="soon-tag">SOON</span></a>
+            <a href="#/answer-eval">AI Answer Evaluation <span class="soon-tag">SOON</span></a>
+            <a href="#/current-affairs">Current Affairs <span class="soon-tag">SOON</span></a>
+            <a href="#/revision">Smart Revision Centre <span class="soon-tag">SOON</span></a>
+            <a href="#/flashcards">Flashcards <span class="soon-tag">SOON</span></a>
+            <a href="#/mindmaps">Mind Maps <span class="soon-tag">SOON</span></a>
+            <a href="#/notes">Topic-wise Notes <span class="soon-tag">SOON</span></a>
+            <a href="#/bookmarks">Bookmarks <span class="soon-tag">SOON</span></a>
+            <a href="#/recommendations">Learning Recommendations <span class="soon-tag">SOON</span></a>
+          </div>
+        </div>
+        <a href="#/account" data-route="/account">Account</a>
       </nav>
     </div>
   </header>
@@ -38,5 +62,14 @@
   </footer>
 
   <script type="module" src="/static/js/app.js"></script>
+  <script type="module">
+    import { api } from "/static/js/api.js";
+    api.get("/me").then((m) => {
+      if (m.authenticated && m.role === "admin") {
+        const l = document.getElementById("govAdminLink");
+        if (l) l.style.display = "flex";
+      }
+    }).catch(() => {});
+  </script>
 </body>
 </html>

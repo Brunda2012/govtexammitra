@@ -15,9 +15,12 @@ WRITE_LIMIT = 40
 AUTH_LIMIT = 15  # per IP per minute, /auth/* — blunts credential stuffing
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
+    _last = None  # test suites reset buckets between suites
+
     def __init__(self, app):
         super().__init__(app)
         self._hits = defaultdict(deque)
+        RateLimitMiddleware._last = self
 
     def _limit_for(self, method: str, path: str) -> int:
         if path.startswith("/api/v1/auth/"):
@@ -29,7 +32,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not path.startswith("/api/"):
             return await call_next(request)
         key = request.client.host if request.client else "unknown"
-        kind = "auth" if path.startswith("/api/v1/auth/") else "general"
+        if path.startswith("/api/v1/auth/"):
+            kind = "auth"
+        else:
+            kind = "write" if request.method in ("POST", "PUT", "DELETE", "PATCH") else "read"
         limit = self._limit_for(request.method, path)
         now = time.time()
         bucket = self._hits[(kind, key)]

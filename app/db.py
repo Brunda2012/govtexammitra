@@ -151,7 +151,7 @@ CREATE INDEX IF NOT EXISTS idx_micro_subject ON micro_topics(subject_id);
 CREATE INDEX IF NOT EXISTS idx_map_a ON overlap_mappings(micro_a);
 CREATE INDEX IF NOT EXISTS idx_map_b ON overlap_mappings(micro_b);
 CREATE INDEX IF NOT EXISTS idx_q_exam ON questions(exam_id);
-CREATE INDEX IF NOT EXISTS idx_prog_user ON topic_progress(user_id);
+        CREATE INDEX IF NOT EXISTS idx_prog_user ON topic_progress(user_id);
 """
 
 BASE_SCHEMA_VERSION = 1
