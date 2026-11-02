@@ -70,7 +70,7 @@ function questionCard(q, n) {
     const btn = el("button", { class: "opt", onclick: async () => {
       if (answered) return;
       answered = true;
-      btn.disabled = false;
+      btn.disabled = true;
       try {
         const res = await api.post(`/questions/${q.id}/answer`, { chosen: idx });
         [...card.querySelectorAll(".opt")].forEach((b, i) => {
@@ -83,7 +83,7 @@ function questionCard(q, n) {
       } catch (err) {
         card.append(el("div", { class: "notice bad" }, "Error: " + err.message));
       }
-    } }, opt));
+      } }, opt);
     card.append(btn);
   });
   return card;
