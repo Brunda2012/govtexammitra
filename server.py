@@ -937,7 +937,7 @@ def pyqs(exam_id: str, topic: str | None = None):
         conn.close()
         raise HTTPException(404, f"Exam '{exam_id}' not found")
     sql = ("SELECT q.id, q.q_type, q.year, q.paper, q.question, q.options_json, q.difficulty, "
-           "q.source_url, m.name topic_name FROM questions q "
+           "m.name topic_name FROM questions q "
            "LEFT JOIN micro_topics m ON m.id=q.micro_topic_id WHERE q.exam_id=? AND q.q_type='OFFICIAL_PYQ'")
     args: list = [exam_id]
     if topic:
