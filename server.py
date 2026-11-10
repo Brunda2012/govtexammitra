@@ -943,13 +943,28 @@ def pyqs(exam_id: str, topic: str | None = None):
     if topic:
         sql += " AND m.name LIKE ?"
         args.append(f"%{topic}%")
-    rows = [dict(r) for r in conn.execute(sql, args).fetchall()]
-    papers = [dict(r) for r in conn.execute("""
-        SELECT d.id, d.title, d.url, d.organisation, d.published_at, d.doc_type, s.name source_name
-        FROM gov_documents d JOIN gov_sources s ON s.id=d.source_id
-        WHERE d.classification_status != 'REJECTED' AND d.exam_ids_json LIKE ?
-        AND (d.doc_type IN ('QUESTION_PAPER','PYQ') OR d.title LIKE '%question paper%')
-        ORDER BY d.published_at DESC LIMIT 50""", (f'%"{exam_id}"%',)).fetchall()]
+    rows = []
+    papers = []
+    notes_extra = ""
+    try:
+        rows = [dict(r) for r in conn.execute(sql, args).fetchall()]
+    except Exception as exc:  # never fail the whole page over one query
+        import traceback
+        print("[pyqs] questions query failed:", repr(exc), flush=True)
+        traceback.print_exc()
+        notes_extra = " Question listing is temporarily unavailable; past papers below are unaffected."
+    try:
+        papers = [dict(r) for r in conn.execute("""
+            SELECT d.id, d.title, d.url, d.organisation, d.published_at, d.doc_type, s.name source_name
+            FROM gov_documents d JOIN gov_sources s ON s.id=d.source_id
+            WHERE d.classification_status != 'REJECTED' AND d.exam_ids_json LIKE ?
+            AND (d.doc_type IN ('QUESTION_PAPER','PYQ') OR d.title LIKE '%question paper%')
+            ORDER BY d.published_at DESC LIMIT 50""", (f'%"{exam_id}"%',)).fetchall()]
+    except Exception as exc:
+        import traceback
+        print("[pyqs] papers query failed:", repr(exc), flush=True)
+        traceback.print_exc()
+        notes_extra += " Official paper listing is temporarily unavailable."
     conn.close()
     for r in rows:
         r["options"] = json.loads(r.pop("options_json") or "[]")
@@ -957,7 +972,7 @@ def pyqs(exam_id: str, topic: str | None = None):
             "note": ("Only questions traceable to an official paper appear as OFFICIAL_PYQ. "
                      "No official PYQs have been ingested yet — the pipeline accepts them via the "
                      "government-source engine and the admin review queue. "
-                     "All currently attemptable questions are DEMONSTRATION-labelled.")}
+                     "All currently attemptable questions are DEMONSTRATION-labelled.") + notes_extra}
 
 # ---------- current affairs ----------
 
