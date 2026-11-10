@@ -728,6 +728,10 @@ def mock_paper(exam_id: str):
         paper = mockmod.assemble(conn, exam_id)
     except ValueError as e:
         raise HTTPException(404, str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Mock assembly failed on this database: {repr(e)[:300]}")
     finally:
         conn.close()
     if not paper:
@@ -946,6 +950,8 @@ def pyqs(exam_id: str, topic: str | None = None):
     rows = []
     papers = []
     notes_extra = ""
+    rows_err = None
+    papers_err = None
     try:
         rows = [dict(r) for r in conn.execute(sql, args).fetchall()]
     except Exception as exc:  # never fail the whole page over one query
@@ -953,6 +959,9 @@ def pyqs(exam_id: str, topic: str | None = None):
         print("[pyqs] questions query failed:", repr(exc), flush=True)
         traceback.print_exc()
         notes_extra = " Question listing is temporarily unavailable; past papers below are unaffected."
+        rows_err = repr(exc)[:200]
+    else:
+        rows_err = None
     try:
         papers = [dict(r) for r in conn.execute("""
             SELECT d.id, d.title, d.url, d.organisation, d.published_at, d.doc_type, s.name source_name
@@ -965,10 +974,14 @@ def pyqs(exam_id: str, topic: str | None = None):
         print("[pyqs] papers query failed:", repr(exc), flush=True)
         traceback.print_exc()
         notes_extra += " Official paper listing is temporarily unavailable."
+        papers_err = repr(exc)[:200]
+    else:
+        papers_err = None
     conn.close()
     for r in rows:
         r["options"] = json.loads(r.pop("options_json") or "[]")
     return {"exam_id": exam_id, "questions": rows, "papers": papers,
+            "query_errors": [e for e in (rows_err, papers_err) if e],
             "note": ("Only questions traceable to an official paper appear as OFFICIAL_PYQ. "
                      "No official PYQs have been ingested yet — the pipeline accepts them via the "
                      "government-source engine and the admin review queue. "
