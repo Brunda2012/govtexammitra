@@ -25,7 +25,8 @@ def _pg_url():
     return url or None
 
 PG_URL = _pg_url()
-PG_IDENTITY_TABLES = {"subjects", "micro_topics", "overlap_mappings", "questions", "tasks", "attempts"}
+PG_IDENTITY_TABLES = {"subjects", "micro_topics", "overlap_mappings", "questions", "tasks", "attempts",
+                      "mock_attempts", "mains_attempts"}
 
 _SC = """
 CREATE TABLE IF NOT EXISTS users (

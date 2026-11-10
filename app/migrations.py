@@ -97,6 +97,51 @@ MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_govdoc_type ON gov_documents(doc_type);
         CREATE INDEX IF NOT EXISTS idx_govcrawl_source ON gov_crawl_log(source_id);
     """),
+    (8, "notes_mock_and_mains_tables", None, """
+        CREATE TABLE IF NOT EXISTS notes (
+          user_id TEXT NOT NULL,
+          micro_topic_id INTEGER NOT NULL REFERENCES micro_topics(id),
+          body TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, micro_topic_id)
+        );
+        CREATE TABLE IF NOT EXISTS mock_attempts (
+          id INTEGER PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          exam_id TEXT NOT NULL REFERENCES exams(id),
+          paper TEXT NOT NULL,
+          sections_json TEXT NOT NULL DEFAULT '[]',
+          total_score REAL NOT NULL DEFAULT 0,
+          max_score REAL NOT NULL DEFAULT 0,
+          correct INTEGER NOT NULL DEFAULT 0,
+          wrong INTEGER NOT NULL DEFAULT 0,
+          unattempted INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS mains_attempts (
+          id INTEGER PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          exam_id TEXT NOT NULL REFERENCES exams(id),
+          prompt_id TEXT NOT NULL,
+          body TEXT NOT NULL,
+          word_count INTEGER NOT NULL DEFAULT 0,
+          self_scores_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS mains_prompts (
+          id TEXT PRIMARY KEY,
+          exam_id TEXT NOT NULL REFERENCES exams(id),
+          paper TEXT NOT NULL,
+          subject_name TEXT NOT NULL,
+          topic_name TEXT,
+          prompt TEXT NOT NULL,
+          word_limit INTEGER NOT NULL DEFAULT 250,
+          guidance TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id);
+        CREATE INDEX IF NOT EXISTS idx_mock_user ON mock_attempts(user_id);
+        CREATE INDEX IF NOT EXISTS idx_mains_user ON mains_attempts(user_id);
+    """),
 ]
 
 def _table_exists(conn, name, sqlite_mode):

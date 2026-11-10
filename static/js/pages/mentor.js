@@ -8,6 +8,8 @@ export async function render(root) {
   const disabled = el("div", { class: "notice warn" },
     "AI mentor not configured. Set MENTOR_PROVIDER, MENTOR_API_KEY, MENTOR_BASE_URL and MENTOR_MODEL in the server environment, then restart. Answers will always be labelled advisory.");
   root.append(disabled);
+  root.append(el("p", { class: "muted small", style: "margin:6px 0 0" },
+    el("a", { href: "#/answer-eval" }, "Looking for AI answer evaluation instead? →")));
   const box = el("section", { class: "card" });
   const ta = el("textarea", {
     rows: "4", style: "width:100%;background:var(--bg-soft);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:12px;font-family:inherit",

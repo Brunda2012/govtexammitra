@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { store } from "../store.js";
 import { el, badge, loading, emptyState, errorState, pageHead } from "../ui.js";
 
 let selected = localStorage.getItem("gm.exam") || "upsc-cse";
@@ -30,7 +31,7 @@ async function load(content) {
   try {
     const [data, analytics] = await Promise.all([
       api.get(`/questions?exam_id=${selected}`),
-      api.get(`/analytics?exam_id=${selected}`),
+      store.get("/analytics", { examId: selected }),
     ]);
     content.innerHTML = "";
 
@@ -63,7 +64,14 @@ async function load(content) {
 function questionCard(q, n) {
   const card = el("section", { class: "card q-card" });
   card.append(el("div", { class: "meta-line" },
-    badge(q.q_type), el("span", { class: "muted small" }, `Q${n} · ${q.topic_name || "General"} · ${q.difficulty}`)),
+    badge(q.q_type), el("span", { class: "muted small" }, `Q${n} · ${q.topic_name || "General"} · ${q.difficulty}`),
+    el("button", { class: "pill", style: "margin-left:auto;padding:2px 10px;font-size:0.72rem",
+      onclick: async (e) => {
+        const { store } = await import("../store.js");
+        await store.post("/bookmarks", { kind: "QUESTION", ref_id: String(q.id) },
+          { label: q.question.slice(0, 120) });
+        e.target.textContent = "Bookmarked ✓";
+      } }, "Bookmark")),
     el("div", { class: "q-text" }, q.question));
   let answered = false;
   q.options.forEach((opt, idx) => {
@@ -72,7 +80,8 @@ function questionCard(q, n) {
       answered = true;
       btn.disabled = true;
       try {
-        const res = await api.post(`/questions/${q.id}/answer`, { chosen: idx });
+        const res = await store.post(`/questions/${q.id}/answer`, { chosen: idx },
+          { examId: selected, topicName: q.topic_name });
         [...card.querySelectorAll(".opt")].forEach((b, i) => {
           b.classList.toggle("correct", i === res.answer_index);
           if (i === idx && !res.correct) b.classList.add("wrong");

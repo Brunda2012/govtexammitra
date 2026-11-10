@@ -32,6 +32,9 @@ export async function render(root) {
       "Publication dates appear only when the source provides them. ",
       "Extraction and exam-tagging are automated assistance — always confirm against the official document.");
     content.append(notice);
+    content.append(el("div", { class: "hero-actions", style: "margin:10px 0 4px" },
+      el("a", { class: "btn ghost", href: "#/current-affairs" }, "Current Affairs (from ingested releases) →"),
+      el("a", { class: "btn ghost", href: "#/pyqs" }, "Previous-year questions →")));
 
     const listWrap = el("div", null, loading());
     content.append(listWrap);

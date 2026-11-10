@@ -1,14 +1,15 @@
 import { api } from "../api.js";
+import { store } from "../store.js";
 import { el, badge, loading, errorState, pageHead, progressbar } from "../ui.js";
 
 export async function render(root) {
   root.innerHTML = "";
   root.append(pageHead("Your preparation overview",
-    "Progress recorded on this device (local user). Multi-user accounts arrive in the next milestone."));
+    "Progress across exams, overlap highlights and next actions. In testing mode this reflects data saved on this device; with an account it syncs to the server."));
   const content = el("div", null, loading());
   root.append(content);
   try {
-    const d = await api.get("/dashboard");
+    const d = await store.get("/dashboard");
     content.innerHTML = "";
 
     const hero = el("section", { class: "card" },

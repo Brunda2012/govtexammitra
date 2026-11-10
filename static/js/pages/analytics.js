@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { store } from "../store.js";
 import { el, loading, errorState, pageHead, progressbar } from "../ui.js";
 
 let selected = localStorage.getItem("gm.exam") || "upsc-cse";
@@ -28,7 +29,7 @@ async function load(content, sel) {
   content.innerHTML = "";
   content.append(loading());
   try {
-    const a = await api.get(`/analytics?exam_id=${encodeURIComponent(selected)}`);
+    const a = await store.get("/analytics", { examId: selected });
     content.innerHTML = "";
     const sp = a.syllabus_progress || {};
     const at = a.attempts || {};
@@ -61,7 +62,8 @@ async function load(content, sel) {
       }
       tbl.append(body);
       weakCard.append(el("p", { class: "muted small", style: "margin:6px 0 10px" },
-        "These topics are below the 60% accuracy threshold. The Smart Revision Centre (planned) will schedule them automatically."), tbl);
+        "These topics are below the 60% accuracy threshold. The Smart Revision Centre schedules them automatically."),
+        el("a", { class: "btn ghost", style: "margin-bottom:10px", href: "#/revision" }, "Open Revision Centre →"), tbl);
     } else {
       weakCard.append(el("p", { class: "muted" },
         "No weak topics yet — weak-topic detection needs at least 2 attempts on a topic. Head to Practice to build the signal."));

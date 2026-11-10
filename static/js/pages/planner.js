@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { store } from "../store.js";
 import { el, badge, loading, emptyState, errorState, pageHead } from "../ui.js";
 
 export async function render(root) {
@@ -9,12 +10,12 @@ export async function render(root) {
   const content = el("div", null, loading());
   root.append(content);
   try {
-    const plan = await api.get("/plan/upsc-cse/capf-ac");
+    const plan = await store.get("/plan/upsc-cse/capf-ac");
     content.innerHTML = "";
     const genBtn = el("button", { class: "btn accent", onclick: async () => {
       genBtn.disabled = true;
       try {
-        const res = await api.post("/plan/upsc-cse/capf-ac/generate", {});
+        const res = await store.post("/plan/upsc-cse/capf-ac/generate", {});
         note.innerHTML = "";
         note.append(el("div", { class: "notice" }, `${res.created} tasks created. Open the task list below.`));
         loadTasks();
@@ -65,7 +66,7 @@ function planCard(it) {
 
 async function loadTasks(box) {
   try {
-    const data = await api.get("/tasks");
+    const data = await store.get("/tasks");
     box.innerHTML = "";
     box.append(el("h3", { style: "margin-top:0" }, "Your tasks"));
     if (!data.tasks.length) {
@@ -82,7 +83,7 @@ async function loadTasks(box) {
         el("td", null, el("span", { class: "badge " + (t.status === "DONE" ? "VERIFIED_OFFICIAL" : "INFO") }, t.status)));
       if (t.status === "PENDING") {
         tr.append(el("td", null, el("button", { class: "btn ghost", onclick: async () => {
-          await api.post(`/tasks/${t.id}/complete`);
+          await store.post(`/tasks/${t.id}/complete`);
           loadTasks(box);
         } }, "Mark done")));
       } else tr.append(el("td"));

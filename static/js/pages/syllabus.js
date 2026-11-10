@@ -1,5 +1,6 @@
 import { api } from "../api.js";
-import { el, badge, loading, errorState, pageHead } from "../ui.js";
+import { store } from "../store.js";
+import { el, badge, loading, errorState, pageHead, progressbar } from "../ui.js";
 
 let selected = localStorage.getItem("gm.exam") || "upsc-cse";
 
@@ -29,7 +30,7 @@ async function load(content, sel) {
   try {
     const [data, prog] = await Promise.all([
       api.get(`/syllabus/${selected}`),
-      api.get(`/progress/${selected}/coverage`),
+      store.get(`/progress/${selected}/coverage`),
     ]);
     const covMap = {};
     for (const c of prog.subjects) covMap[c.subject_name] = c;
@@ -59,7 +60,13 @@ async function load(content, sel) {
             el("button", {
               class: "pill", style: "padding:2px 10px;font-size:0.72rem;margin-left:6px",
               onclick: () => markProgress(m, ul),
-            }, "Mark done")));
+            }, "Mark done"),
+            el("button", {
+              class: "pill", style: "padding:2px 10px;font-size:0.72rem;margin-left:4px",
+              onclick: () => bookmarkTopic(m, ul),
+            }, "Bookmark"),
+            el("a", { class: "pill", style: "padding:2px 10px;font-size:0.72rem;margin-left:4px",
+              href: `#/notes?topic=${m.id}` }, "Note")));
         }
         body.append(el("div", { class: "muted small", style: "margin-top:8px" }, "Micro-topics (AI-derived decomposition — verify against the official notification):"), ul);
       }
@@ -74,7 +81,7 @@ async function load(content, sel) {
 
 async function markProgress(m, ul) {
   try {
-    const res = await api.post("/progress", { micro_topic_id: m.id, status: "COMPLETED", mastery: 100 });
+    const res = await store.post("/progress", { micro_topic_id: m.id, status: "COMPLETED", mastery: 100 });
     const note = el("div", { class: "notice", style: "margin-top:10px" },
       "Saved. " + (res.applied.length > 1
         ? `Propagated to ${res.applied.length - 1} mapped exam topic(s) per the overlap rules (exact → same mastery; partial → capped at 60%).`
@@ -83,5 +90,17 @@ async function markProgress(m, ul) {
     setTimeout(() => note.remove(), 8000);
   } catch (err) {
     alert("Could not save progress: " + err.message);
+  }
+}
+
+async function bookmarkTopic(m, ul) {
+  try {
+    await store.post("/bookmarks", { kind: "TOPIC", ref_id: String(m.id) }, { label: m.name });
+    const note = el("div", { class: "notice", style: "margin-top:10px" },
+      `Bookmarked “${m.name}”. Find it under Bookmarks.`);
+    ul.parentElement.insertBefore(note, ul);
+    setTimeout(() => note.remove(), 6000);
+  } catch (err) {
+    alert("Could not bookmark: " + err.message);
   }
 }

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.db import get_conn, load_json_fields
 from app import overlap as ov, progress as prog, planner as plan
+from app import mocks as mockmod, revision as revmod, recommend as recmod, mains as mainmod
 from app.seed import seed
 from app.auth import resolve_user, authenticate, register as register_user, EMAIL_RE
 from app.security import make_token
@@ -649,9 +650,452 @@ def gov_audit(limit: int = Query(100, ge=1, le=200), user: str | None = Depends(
     conn.close()
     return {"audit": rows}
 
+# ---------- guest-mode public helpers (no persistence; device mode stores locally) ----------
+
+@api.post("/questions/{question_id}/check", tags=["practice"])
+def check_question(question_id: int, chosen: int = Body(ge=0, le=5, embed=True)):
+    """Public answer check for guest/device mode: same engine as the authenticated
+    answer endpoint, minus the attempt record. The device store keeps the attempt locally."""
+    conn = get_conn()
+    q = conn.execute("SELECT * FROM questions WHERE id=?", (question_id,)).fetchone()
+    if not q:
+        conn.close()
+        raise HTTPException(404, "Question not found")
+    correct = int(chosen == q["answer_index"])
+    exam = ov.get_exam(conn, q["exam_id"])
+    marking = (exam or {}).get("marking_json")
+    if marking and isinstance(marking, str):
+        try:
+            marking = json.loads(marking)
+        except ValueError:
+            marking = None
+    score = 0.0
+    if correct:
+        score = 1.0
+    elif marking:
+        neg = (marking.get("prelims_gs1") or marking.get("paper1") or {}).get("negative_fraction", "1/3")
+        score = -1 / 3 if neg == "1/3" else 0.0
+    conn.close()
+    return {"correct": bool(correct), "answer_index": q["answer_index"],
+            "explanation": q["explanation"], "score": score, "question_type": q["q_type"]}
+
+@api.post("/mocks/{exam_id}/submit-guest", tags=["mocks"])
+def mock_submit_guest(exam_id: str, payload: dict = Body(...)):
+    """Score a guest mock without persisting: identical engine, device store keeps the card."""
+    conn = get_conn()
+    try:
+        answers = (payload or {}).get("answers")
+        if not isinstance(answers, dict):
+            raise HTTPException(422, "Field 'answers' must be an object {question_id: chosen_index or null}")
+        paper = (payload or {}).get("paper") or "Mock"
+        qids = (payload or {}).get("question_ids")
+        if qids is not None and not isinstance(qids, list):
+            raise HTTPException(422, "Field 'question_ids' must be a list of question ids")
+        return mockmod.score(conn, "guest-device", exam_id, paper, answers, persist=False,
+                             question_ids=qids)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    finally:
+        conn.close()
+
+@api.get("/plan/{exam_a}/{exam_b}/preview", tags=["planner"])
+def plan_preview(exam_a: str, exam_b: str):
+    """Public combined-plan preview for guest exploration: the real planner engine,
+    computed against no stored progress (everything NOT_STARTED), nothing persisted."""
+    conn = get_conn()
+    try:
+        items = plan.build_plan(conn, "guest-device", exam_a, exam_b)
+        return {"exam_a": exam_a, "exam_b": exam_b, "items": items,
+                "note": "Preview mode: computed with no personal progress. Sign in to track progress and generate tasks."}
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    finally:
+        conn.close()
+
 app.include_router(api)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE, "static")), name="static")
 
 @app.get("/", include_in_schema=False)
 def index():
     return FileResponse(os.path.join(BASE, "static", "index.html"))
+
+# ---------- mock tests ----------
+
+@api.get("/mocks/{exam_id}", tags=["mocks"])
+def mock_paper(exam_id: str):
+    conn = get_conn()
+    try:
+        paper = mockmod.assemble(conn, exam_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    finally:
+        conn.close()
+    if not paper:
+        raise HTTPException(404, "No objective sections with questions exist for this exam yet.")
+    paper["note"] = ("Assembled live from the GovtExamMitra question bank. All seeded questions are "
+                     "DEMONSTRATION-labelled; sections are smaller than official papers until the bank grows.")
+    return paper
+
+@api.post("/mocks/{exam_id}/submit", tags=["mocks"])
+def mock_submit(exam_id: str, payload: dict = Body(...), user: str = Depends(require_user)):
+    conn = get_conn()
+    try:
+        answers = (payload or {}).get("answers")
+        if not isinstance(answers, dict):
+            raise HTTPException(422, "Field 'answers' must be an object {question_id: chosen_index or null}")
+        paper = (payload or {}).get("paper") or "Mock"
+        qids = (payload or {}).get("question_ids")
+        if qids is not None and not isinstance(qids, list):
+            raise HTTPException(422, "Field 'question_ids' must be a list of question ids")
+        return mockmod.score(conn, user, exam_id, paper, answers, question_ids=qids)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    finally:
+        conn.close()
+
+@api.get("/mocks/{exam_id}/history", tags=["mocks"])
+def mock_history(exam_id: str, user: str = Depends(require_user)):
+    conn = get_conn()
+    rows = mockmod.history(conn, user, exam_id)
+    conn.close()
+    return {"exam_id": exam_id, "attempts": rows}
+
+# ---------- revision centre ----------
+
+@api.get("/revision/{exam_id}/queue", tags=["revision"])
+def revision_queue(exam_id: str, user: str = Depends(require_user)):
+    conn = get_conn()
+    if not ov.get_exam(conn, exam_id):
+        conn.close()
+        raise HTTPException(404, f"Exam '{exam_id}' not found")
+    out = revmod.queue(conn, user, exam_id)
+    conn.close()
+    return out
+
+@api.get("/revision/{exam_id}/session", tags=["revision"])
+def revision_session(exam_id: str, limit: int = Query(10, ge=1, le=25), user: str = Depends(require_user)):
+    conn = get_conn()
+    if not ov.get_exam(conn, exam_id):
+        conn.close()
+        raise HTTPException(404, f"Exam '{exam_id}' not found")
+    out = revmod.session(conn, user, exam_id, limit)
+    conn.close()
+    return out
+
+# ---------- flashcards ----------
+
+@api.get("/flashcards/{exam_id}", tags=["revision"])
+def flashcards(exam_id: str, limit: int = Query(30, ge=1, le=100), user: str | None = Depends(current_user)):
+    conn = get_conn()
+    if not ov.get_exam(conn, exam_id):
+        conn.close()
+        raise HTTPException(404, f"Exam '{exam_id}' not found")
+    due_ids = revmod.due_topic_ids(conn, user, exam_id) if user else None
+    micros = [dict(r) for r in conn.execute("""
+        SELECT m.id, m.name, m.depth_note, s.name subject_name, s.paper, s.stage, s.official_text
+        FROM micro_topics m JOIN subjects s ON s.id=m.subject_id
+        WHERE m.exam_id=? ORDER BY s.ordering, m.name""", (exam_id,)).fetchall()]
+    conn.close()
+    cards = []
+    for m in micros:
+        card = {
+            "micro_topic_id": m["id"], "front": m["name"],
+            "back": {"subject": m["subject_name"], "paper": m["paper"], "stage": m["stage"],
+                     "depth_note": m["depth_note"],
+                     "syllabus_context": m["official_text"]},
+            "source": "Generated from the verified syllabus decomposition (subjects.official_text "
+                      "is official UPSC notification wording; micro-topics are AI-derived).",
+        }
+        if due_ids is not None:
+            card["due"] = m["id"] in due_ids
+        cards.append(card)
+    if due_ids:
+        cards.sort(key=lambda c: not c["due"])
+    return {"exam_id": exam_id, "cards": cards[:limit], "scheduled": bool(user)}
+
+# ---------- mind maps ----------
+
+@api.get("/mindmap/{exam_id}", tags=["revision"])
+def mindmap(exam_id: str, user: str | None = Depends(current_user)):
+    conn = get_conn()
+    if not ov.get_exam(conn, exam_id):
+        conn.close()
+        raise HTTPException(404, f"Exam '{exam_id}' not found")
+    subjects = [dict(r) for r in conn.execute(
+        "SELECT id, name, group_key, stage, paper FROM subjects WHERE exam_id=? ORDER BY ordering",
+        (exam_id,)).fetchall()]
+    pmap = {}
+    if user:
+        for p in prog.get_progress(conn, user, exam_id):
+            pmap[p["micro_topic_id"]] = p
+    micros = [dict(r) for r in conn.execute(
+        "SELECT id, name, subject_id FROM micro_topics WHERE exam_id=? ORDER BY name",
+        (exam_id,)).fetchall()]
+    qn = {r["micro_topic_id"]: r["c"] for r in conn.execute(
+        "SELECT micro_topic_id, COUNT(*) c FROM questions WHERE exam_id=? AND micro_topic_id IS NOT NULL GROUP BY micro_topic_id",
+        (exam_id,)).fetchall()}
+    conn.close()
+    tree = []
+    for s in subjects:
+        children = []
+        for m in micros:
+            if m["subject_id"] != s["id"]:
+                continue
+            p = pmap.get(m["id"])
+            children.append({"id": m["id"], "name": m["name"],
+                             "status": p["status"] if p else "NOT_STARTED",
+                             "mastery": p["mastery"] if p else 0,
+                             "questions": qn.get(m["id"], 0)})
+        done = sum(1 for c in children if c["status"] == "COMPLETED")
+        tree.append({"id": s["id"], "name": s["name"], "group_key": s["group_key"],
+                     "stage": s["stage"], "paper": s["paper"],
+                     "completion_pct": round(100 * done / len(children), 1) if children else 0.0,
+                     "children": children})
+    return {"exam_id": exam_id, "subjects": tree,
+            "note": "Rendered from the real database hierarchy. Node colour = your progress; "
+                    "structure is the verified syllabus decomposition."}
+
+# ---------- recommendations ----------
+
+@api.get("/recommendations/{exam_id}", tags=["recommendations"])
+def recommendations(exam_id: str, pair: str | None = Query(None, description="paired exam for overlap rules"),
+                   user: str = Depends(require_user)):
+    conn = get_conn()
+    try:
+        return recmod.recommend(conn, user, exam_id, pair)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    finally:
+        conn.close()
+
+# ---------- mains answer writing ----------
+
+@api.get("/mains/{exam_id}/prompts", tags=["mains"])
+def mains_prompts(exam_id: str):
+    conn = get_conn()
+    try:
+        return mainmod.prompts(conn, exam_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    finally:
+        conn.close()
+
+@api.post("/mains/attempts", tags=["mains"])
+def mains_submit(payload: dict = Body(...), user: str = Depends(require_user)):
+    conn = get_conn()
+    try:
+        exam_id = (payload or {}).get("exam_id")
+        prompt_id = (payload or {}).get("prompt_id")
+        if not exam_id or not prompt_id or not isinstance((payload or {}).get("body"), str):
+            raise HTTPException(422, "Fields exam_id, prompt_id and body are required")
+        return mainmod.submit(conn, user, payload)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    finally:
+        conn.close()
+
+@api.get("/mains/attempts", tags=["mains"])
+def mains_history(exam_id: str | None = None, user: str = Depends(require_user)):
+    conn = get_conn()
+    rows = mainmod.history(conn, user, exam_id)
+    conn.close()
+    return {"attempts": rows}
+
+# ---------- AI answer evaluation (advisory; needs configured provider) ----------
+
+EVAL_SYSTEM = ("You are the GovtExamMitra answer evaluator. Score the descriptive answer against the "
+               "given rubric dimensions. Return: per-dimension scores with one-line justification, "
+               "missing key points, and one improvement suggestion. You are advisory, not official.")
+
+@api.post("/eval/answer", tags=["mains"])
+def eval_answer(payload: dict = Body(...), user: str = Depends(require_user)):
+    question = (payload or {}).get("question", "").strip()
+    answer = (payload or {}).get("answer", "").strip()
+    if not question or not answer:
+        raise HTTPException(422, "Fields 'question' and 'answer' are required")
+    if len(answer) > 8000:
+        raise HTTPException(422, "Answer too long (max 8000 chars)")
+    rubric_keys = [r["key"] for r in mainmod.RUBRIC]
+    rubric_text = "; ".join(f"{r['label']} (0-{r['max']})" for r in mainmod.RUBRIC)
+    result = mentor.ask(
+        f"Question: {question}\n\nAnswer: {answer}\n\nRubric dimensions: {rubric_text}. "
+        "Return per-dimension scores with justification, missing key points and one improvement.",
+        context={"task": "answer_evaluation", "rubric": rubric_keys})
+    if result is None:
+        raise HTTPException(503, "AI answer evaluation is not configured. Set MENTOR_PROVIDER and "
+                                 "MENTOR_API_KEY in the server environment. GovtExamMitra does not "
+                                 "pretend to score answers without a real evaluation engine.")
+    result["rubric"] = mainmod.RUBRIC
+    return result
+
+# ---------- PYQs ----------
+
+@api.get("/pyqs/{exam_id}", tags=["pyqs"])
+def pyqs(exam_id: str, topic: str | None = None):
+    conn = get_conn()
+    if not ov.get_exam(conn, exam_id):
+        conn.close()
+        raise HTTPException(404, f"Exam '{exam_id}' not found")
+    sql = ("SELECT q.id, q.q_type, q.year, q.paper, q.question, q.options_json, q.difficulty, "
+           "q.source_url, m.name topic_name FROM questions q "
+           "LEFT JOIN micro_topics m ON m.id=q.micro_topic_id WHERE q.exam_id=? AND q.q_type='OFFICIAL_PYQ'")
+    args: list = [exam_id]
+    if topic:
+        sql += " AND m.name LIKE ?"
+        args.append(f"%{topic}%")
+    rows = [dict(r) for r in conn.execute(sql, args).fetchall()]
+    papers = [dict(r) for r in conn.execute("""
+        SELECT d.id, d.title, d.url, d.organisation, d.published_at, d.doc_type, s.name source_name
+        FROM gov_documents d JOIN gov_sources s ON s.id=d.source_id
+        WHERE d.classification_status != 'REJECTED' AND d.exam_ids_json LIKE ?
+        AND (d.doc_type IN ('QUESTION_PAPER','PYQ') OR d.title LIKE '%question paper%')
+        ORDER BY d.published_at DESC LIMIT 50""", (f'%"{exam_id}"%',)).fetchall()]
+    conn.close()
+    for r in rows:
+        r["options"] = json.loads(r.pop("options_json") or "[]")
+    return {"exam_id": exam_id, "questions": rows, "papers": papers,
+            "note": ("Only questions traceable to an official paper appear as OFFICIAL_PYQ. "
+                     "No official PYQs have been ingested yet — the pipeline accepts them via the "
+                     "government-source engine and the admin review queue. "
+                     "All currently attemptable questions are DEMONSTRATION-labelled.")}
+
+# ---------- current affairs ----------
+
+@api.get("/current-affairs", tags=["current-affairs"])
+def current_affairs(exam: str | None = None, limit: int = Query(30, ge=1, le=100)):
+    conn = get_conn()
+    sql = ("SELECT d.id, d.url, d.title, d.organisation, d.doc_type, d.published_at, d.collected_at, "
+           "d.exam_ids_json, s.name source_name, s.base_url source_base "
+           "FROM gov_documents d JOIN gov_sources s ON s.id=d.source_id "
+           "WHERE d.classification_status != 'REJECTED' "
+           "AND d.doc_type IN ('NEWS','PIB_RELEASE','PRESS_RELEASE','OTHER')")
+    args: list = []
+    if exam:
+        sql += " AND (d.exam_ids_json LIKE ? OR d.exam_ids_json='[]')"
+        args.append(f'%"{exam}"%')
+    rows = [dict(r) for r in conn.execute(
+        sql + " ORDER BY COALESCE(d.published_at, d.collected_at) DESC LIMIT ?",
+        args + [limit]).fetchall()]
+    conn.close()
+    for r in rows:
+        r["exam_ids"] = json.loads(r.pop("exam_ids_json") or "[]")
+    return {"items": rows,
+            "note": "Every item links to its originating official release. Relevance mapping to "
+                    "exam syllabus improves as documents are classified."}
+
+# ---------- notes ----------
+
+@api.get("/notes", tags=["notes"])
+def notes_all(user: str = Depends(require_user)):
+    conn = get_conn()
+    rows = [dict(r) for r in conn.execute("""
+        SELECT n.micro_topic_id, n.body, n.updated_at, m.name topic_name, m.exam_id
+        FROM notes n JOIN micro_topics m ON m.id=n.micro_topic_id
+        WHERE n.user_id=? ORDER BY n.updated_at DESC""", (user,)).fetchall()]
+    conn.close()
+    return {"notes": rows}
+
+@api.get("/notes/{micro_topic_id}", tags=["notes"])
+def note_get(micro_topic_id: int, user: str = Depends(require_user)):
+    conn = get_conn()
+    row = conn.execute("SELECT body, updated_at FROM notes WHERE user_id=? AND micro_topic_id=?",
+                       (user, micro_topic_id)).fetchone()
+    conn.close()
+    return {"micro_topic_id": micro_topic_id, "body": row["body"] if row else "",
+            "updated_at": row["updated_at"] if row else None}
+
+@api.put("/notes/{micro_topic_id}", tags=["notes"])
+def note_put(micro_topic_id: int, payload: dict = Body(...), user: str = Depends(require_user)):
+    body = (payload or {}).get("body")
+    if not isinstance(body, str) or len(body) > 20000:
+        raise HTTPException(422, "Field 'body' (string, max 20000 chars) is required")
+    conn = get_conn()
+    try:
+        m = conn.execute("SELECT exam_id FROM micro_topics WHERE id=?", (micro_topic_id,)).fetchone()
+        if not m:
+            raise HTTPException(404, "Unknown micro-topic")
+        from datetime import datetime, timezone as _tz
+        now = datetime.now(_tz.utc).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("""INSERT INTO notes (user_id, micro_topic_id, body, updated_at)
+                        VALUES (?,?,?,?)
+                        ON CONFLICT (user_id, micro_topic_id)
+                        DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at""",
+                     (user, micro_topic_id, body, now))
+        conn.commit()
+        return {"micro_topic_id": micro_topic_id, "saved": True, "updated_at": now}
+    finally:
+        conn.close()
+
+@api.delete("/notes/{micro_topic_id}", tags=["notes"])
+def note_delete(micro_topic_id: int, user: str = Depends(require_user)):
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM notes WHERE user_id=? AND micro_topic_id=?",
+                       (user, micro_topic_id))
+    conn.commit()
+    conn.close()
+    return {"deleted": cur.rowcount}
+
+# ---------- bookmarks ----------
+
+VALID_BOOKMARK_KINDS = ("TOPIC", "QUESTION", "TASK")
+
+@api.get("/bookmarks", tags=["bookmarks"])
+def bookmarks_all(user: str = Depends(require_user)):
+    conn = get_conn()
+    rows = [dict(r) for r in conn.execute(
+        "SELECT kind, ref_id, created_at FROM bookmarks WHERE user_id=? ORDER BY created_at DESC",
+        (user,)).fetchall()]
+    out = []
+    for r in rows:
+        label = detail = None
+        if r["kind"] == "TOPIC":
+            t = conn.execute("SELECT m.name, m.exam_id FROM micro_topics m WHERE m.id=?",
+                             (r["ref_id"],)).fetchone()
+            if t:
+                label, detail = t["name"], t["exam_id"]
+        elif r["kind"] == "QUESTION":
+            try:
+                q = conn.execute("SELECT question FROM questions WHERE id=?",
+                                 (int(r["ref_id"]),)).fetchone()
+            except ValueError:
+                q = None
+            if q:
+                label, detail = q["question"][:120], None
+        out.append({**r, "label": label, "detail": detail})
+    conn.close()
+    return {"bookmarks": out}
+
+@api.post("/bookmarks", tags=["bookmarks"])
+def bookmark_add(payload: dict = Body(...), user: str = Depends(require_user)):
+    kind = (payload or {}).get("kind")
+    ref_id = (payload or {}).get("ref_id")
+    if kind not in VALID_BOOKMARK_KINDS:
+        raise HTTPException(422, f"kind must be one of {VALID_BOOKMARK_KINDS}")
+    if not ref_id:
+        raise HTTPException(422, "ref_id is required")
+    conn = get_conn()
+    try:
+        if kind == "TOPIC" and not conn.execute(
+                "SELECT 1 FROM micro_topics WHERE id=?", (int(ref_id),)).fetchone():
+            raise HTTPException(422, "Unknown micro-topic")
+        if kind == "QUESTION" and not conn.execute(
+                "SELECT 1 FROM questions WHERE id=?", (int(ref_id),)).fetchone():
+            raise HTTPException(422, "Unknown question")
+        conn.execute("INSERT INTO bookmarks (user_id, kind, ref_id) VALUES (?,?,?) "
+                     "ON CONFLICT (user_id, kind, ref_id) DO NOTHING",
+                     (user, kind, str(ref_id)))
+        conn.commit()
+        return {"bookmarked": True, "kind": kind, "ref_id": str(ref_id)}
+    except ValueError:
+        raise HTTPException(422, "ref_id must be an integer for TOPIC/QUESTION bookmarks")
+    finally:
+        conn.close()
+
+@api.delete("/bookmarks/{kind}/{ref_id}", tags=["bookmarks"])
+def bookmark_del(kind: str, ref_id: str, user: str = Depends(require_user)):
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM bookmarks WHERE user_id=? AND kind=? AND ref_id=?",
+                       (user, kind, ref_id))
+    conn.commit()
+    conn.close()
+    return {"deleted": bool(cur.rowcount)}
