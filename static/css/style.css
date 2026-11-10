@@ -316,3 +316,37 @@ main > section.card { margin-top: 12px; padding: 20px; }
   .home-hero { padding: 34px 16px 16px; }
   .rubric-inputs { gap: 8px; }
 }
+
+
+/* ---------- simplified student-first UI ---------- */
+.btn.big { padding: 13px 26px; font-size: 1.05rem; border-radius: var(--radius); }
+.nav-drop-panel a { flex-direction: column; align-items: flex-start; gap: 1px; }
+.nav-drop-panel a .nav-desc { font-size: 0.72rem; font-weight: 400; color: var(--text-dim); white-space: normal; }
+.next-step-card {
+  background: linear-gradient(135deg, var(--surface) 60%, rgba(91,124,250,0.08));
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.step-card { display: flex; flex-direction: column; }
+.step-num {
+  width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--brand); color: #fff; font-weight: 800; font-size: 1rem;
+}
+.task-list { margin: 0 0 12px; padding-left: 20px; }
+.task-list li { margin: 6px 0; }
+details.card > summary { list-style: none; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary:hover { color: var(--text); }
+
+@media (max-width: 680px) {
+  .nav-drop { width: 100%; }
+  .nav-drop-panel {
+    position: static; box-shadow: none; border: none; border-left: 2px solid var(--line);
+    border-radius: 0; margin: 2px 0 6px 10px; display: none; min-width: 0;
+  }
+  .nav-drop.open .nav-drop-panel { display: block; }
+  .nav-drop-btn { width: 100%; text-align: left; font-size: 1rem; padding: 10px 6px; }
+  .main-nav > a, .main-nav .nav-drop-btn { min-height: 44px; }
+  .home-hero { padding: 26px 16px; }
+  .hero-actions .btn { width: 100%; text-align: center; margin: 4px 0; }
+  .tools-grid { grid-template-columns: 1fr; }
+}

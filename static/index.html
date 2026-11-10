@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GovtExamMitra — One Platform. Multiple Exams. Smarter Preparation.</title>
-  <meta name="description" content="AI-powered government examination preparation with Exam Overlap Intelligence: compare UPSC CSE, CAPF AC and more at micro-topic level." />
+  <title>GovtExamMitra — Prepare for government exams, simply</title>
+  <meta name="description" content="Learn the official syllabus topic by topic, practise with real marking rules, and track your progress — free, honest and simple." />
   <link rel="stylesheet" href="/static/css/style.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235b7cfa'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>G</text></svg>" />
 </head>
@@ -13,57 +13,45 @@
     <div class="header-inner">
       <a class="brand" href="#/">
         <span class="logo">G</span>
-        <span>GovtExamMitra<span class="tag">ONE PLATFORM. MULTIPLE EXAMS. SMARTER PREPARATION.</span></span>
+        <span>GovtExamMitra<span class="tag">STUDY SMARTER, NOT HARDER</span></span>
       </a>
       <button class="menu-btn" id="menuBtn" aria-label="Toggle navigation">☰</button>
       <nav class="main-nav" id="mainNav" aria-label="Main navigation">
         <a href="#/" data-route="/" class="nav-flagship">Home</a>
         <div class="nav-drop">
-          <button class="nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">Explore Examinations ▾</button>
+          <button class="nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">Study ▾</button>
           <div class="nav-drop-panel">
-            <a href="#/exams" data-route="/exams">Examinations catalogue</a>
-            <a href="#/overlap" data-route="/overlap">Overlap Intelligence</a>
-            <a href="#/methodology" data-route="/methodology">Methodology &amp; Data Quality</a>
+            <a href="#/syllabus" data-route="/syllabus"><strong>Syllabus</strong><span class="nav-desc">See exactly what to learn, topic by topic</span></a>
+            <a href="#/practice" data-route="/practice"><strong>Practice questions</strong><span class="nav-desc">Answer questions with real marking rules</span></a>
+            <a href="#/mocks" data-route="/mocks"><strong>Mock tests</strong><span class="nav-desc">A full timed test with a score card</span></a>
+            <a href="#/mains" data-route="/mains"><strong>Mains writing</strong><span class="nav-desc">Write answers and score yourself honestly</span></a>
+            <a href="#/flashcards" data-route="/flashcards"><strong>Flashcards</strong><span class="nav-desc">Quick revision, one topic at a time</span></a>
+            <a href="#/mindmaps" data-route="/mindmaps"><strong>Topic map</strong><span class="nav-desc">See the whole subject at a glance</span></a>
+            <a href="#/revision" data-route="/revision"><strong>What to revise</strong><span class="nav-desc">Weak topics resurface until they stick</span></a>
           </div>
         </div>
         <div class="nav-drop">
-          <button class="nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">Prepare ▾</button>
+          <button class="nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">My progress ▾</button>
           <div class="nav-drop-panel">
-            <a href="#/syllabus" data-route="/syllabus">Syllabus</a>
-            <a href="#/practice" data-route="/practice">Practice</a>
-            <a href="#/mocks" data-route="/mocks">Mock Tests</a>
-            <a href="#/mains" data-route="/mains">Mains Answer Writing</a>
-            <a href="#/planner" data-route="/planner">Planner</a>
+            <a href="#/dashboard" data-route="/dashboard"><strong>Dashboard</strong><span class="nav-desc">Your progress and next steps</span></a>
+            <a href="#/planner" data-route="/planner"><strong>Study plan</strong><span class="nav-desc">What to study today, week by week</span></a>
+            <a href="#/analytics" data-route="/analytics"><strong>Strengths &amp; weaknesses</strong><span class="nav-desc">Where you are doing well and where to improve</span></a>
+            <a href="#/recommendations" data-route="/recommendations"><strong>Suggestions for you</strong><span class="nav-desc">What to study next, and why</span></a>
+            <a href="#/notes" data-route="/notes"><strong>My notes</strong><span class="nav-desc">Your own notes, saved topic by topic</span></a>
+            <a href="#/bookmarks" data-route="/bookmarks"><strong>Saved items</strong><span class="nav-desc">Topics and questions you bookmarked</span></a>
           </div>
         </div>
         <div class="nav-drop">
-          <button class="nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">Learn ▾</button>
+          <button class="nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">Exams &amp; info ▾</button>
           <div class="nav-drop-panel">
-            <a href="#/mindmaps" data-route="/mindmaps">Mind Maps</a>
-            <a href="#/flashcards" data-route="/flashcards">Flashcards</a>
-            <a href="#/revision" data-route="/revision">Revision Centre</a>
-            <a href="#/pyqs" data-route="/pyqs">Previous-Year Questions</a>
-            <a href="#/current-affairs" data-route="/current-affairs">Current Affairs</a>
-            <a href="#/mentor" data-route="/mentor">AI Study Mentor</a>
-            <a href="#/answer-eval" data-route="/answer-eval">AI Answer Evaluation</a>
-          </div>
-        </div>
-        <div class="nav-drop">
-          <button class="nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">Track Progress ▾</button>
-          <div class="nav-drop-panel">
-            <a href="#/dashboard" data-route="/dashboard">Dashboard</a>
-            <a href="#/analytics" data-route="/analytics">Performance Analytics</a>
-            <a href="#/recommendations" data-route="/recommendations">Recommendations</a>
-            <a href="#/notes" data-route="/notes">Notes</a>
-            <a href="#/bookmarks" data-route="/bookmarks">Bookmarks</a>
-          </div>
-        </div>
-        <div class="nav-drop">
-          <button class="nav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">Government Information ▾</button>
-          <div class="nav-drop-panel">
-            <a href="#/govinfo" data-route="/govinfo">Government Information Centre</a>
-            <a href="#/govadmin" data-route="/govadmin" style="display:none" id="govAdminLink">Source Management (Admin)</a>
-            <a href="#/govinfo" >Ingested official documents</a>
+            <a href="#/exams" data-route="/exams"><strong>Choose your exam</strong><span class="nav-desc">What we support today</span></a>
+            <a href="#/overlap" data-route="/overlap"><strong>Studying for two exams?</strong><span class="nav-desc">See what overlaps and what needs extra effort</span></a>
+            <a href="#/pyqs" data-route="/pyqs"><strong>Past papers</strong><span class="nav-desc">Official question papers, with sources</span></a>
+            <a href="#/current-affairs" data-route="/current-affairs"><strong>Current affairs</strong><span class="nav-desc">Official news releases, linked to their source</span></a>
+            <a href="#/govinfo" data-route="/govinfo"><strong>Government updates</strong><span class="nav-desc">Official notifications and documents</span></a>
+            <a href="#/mentor" data-route="/mentor"><strong>Ask a question</strong><span class="nav-desc">AI study help (needs setup on the server)</span></a>
+            <a href="#/methodology" data-route="/methodology"><strong>How this works</strong><span class="nav-desc">Where our data comes from, honestly</span></a>
+            <a href="#/govadmin" data-route="/govadmin" style="display:none" id="govAdminLink"><strong>Source management</strong><span class="nav-desc">Admin only</span></a>
           </div>
         </div>
         <a href="#/account" data-route="/account">Account</a>
@@ -72,8 +60,8 @@
   </header>
 
   <div id="guestBanner" class="guest-banner" style="display:none" role="status">
-    <span><strong>Testing mode</strong> — progress is saved on this device only, not on the server.
-      <a href="#/account">Create a free account</a> to save it everywhere.</span>
+    <span><strong>Trying it out?</strong> Nothing to install, no sign-up needed — your progress is saved on this device.
+      <a href="#/account">Make a free account</a> anytime to keep it forever.</span>
   </div>
 
   <main id="app" aria-live="polite">
@@ -81,8 +69,8 @@
   </main>
 
   <footer class="app-footer">
-    GovtExamMitra — original, independent preparation platform. Official data attributed to UPSC/SSC/RRB notifications;
-    AI-derived mappings are labelled and require verification. Not affiliated with any government body.
+    GovtExamMitra — a free, independent study companion. Official syllabus wording from UPSC notifications;
+    anything not verified is labelled. Not affiliated with any government body.
   </footer>
 
   <script type="module" src="/static/js/app.js"></script>

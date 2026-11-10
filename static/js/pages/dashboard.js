@@ -1,55 +1,88 @@
 import { api } from "../api.js";
 import { store } from "../store.js";
-import { el, badge, loading, errorState, pageHead, progressbar } from "../ui.js";
+import { device } from "../device.js";
+import { el, loading, errorState, pageHead, progressbar } from "../ui.js";
+
+const STEPS = [
+  { key: "pick", title: "Pick your exam", href: "#/exams", hint: "See which exams are ready today." },
+  { key: "syllabus", title: "Learn the syllabus", href: "#/syllabus", hint: "Small topics you can tick off one by one." },
+  { key: "overlap", title: "Compare two exams", href: "#/overlap", hint: "Optional: study shared topics once." },
+  { key: "practice", title: "Practise questions", href: "#/practice", hint: "Real marking rules, with explanations." },
+  { key: "plan", title: "Make a study plan", href: "#/planner", hint: "A day-by-day plan from your progress." },
+  { key: "track", title: "Track your progress", href: "#/dashboard", hint: "You are here — this page." },
+];
 
 export async function render(root) {
   root.innerHTML = "";
-  root.append(pageHead("Your preparation overview",
-    "Progress across exams, overlap highlights and next actions. In testing mode this reflects data saved on this device; with an account it syncs to the server."));
+  root.append(pageHead("My progress",
+    "One glance: what you have done, and the one thing to do next. Everything else lives in the menu."));
   const content = el("div", null, loading());
   root.append(content);
   try {
     const d = await store.get("/dashboard");
     content.innerHTML = "";
 
-    const hero = el("section", { class: "card" },
-      el("h2", { style: "margin-top:0" }, "Exam Overlap Intelligence"),
-      el("p", { class: "muted" }, "The flagship capability: know what to study once for multiple exams, and where extra depth is needed."),
-      d.overlap_summary
-        ? el("div", { class: "grid cols-4", style: "margin-top:12px" },
-            miniStat(d.overlap_summary.compared_pairs, "mapped topic pairs"),
-            miniStat(d.overlap_summary.exact_match, "exact overlaps"),
-            miniStat(d.overlap_summary.partial_overlap, "partial overlaps"),
-            miniStat(d.overlap_summary.related_concept, "related concepts"))
-        : el("div", { class: "notice warn" }, "Overlap data not available yet."),
-      el("a", { class: "btn accent", style: "margin-top:14px", href: "#/overlap" }, "Open comparison →"));
-    content.append(hero);
-    content.append(toolsGrid());
+    // ---- next step ----
+    const checklist = device.checklist(STEPS);
+    const next = checklist.find((s) => !s.done);
+    if (next) {
+      content.append(el("section", { class: "card next-step-card" },
+        el("div", { class: "muted small" }, "YOUR NEXT STEP"),
+        el("h2", { style: "margin:6px 0" }, next.title),
+        el("p", { class: "muted", style: "margin:0 0 14px" }, next.hint),
+        el("a", { class: "btn accent big", href: next.href }, "Do it now →"),
+        el("div", { class: "muted small", style: "margin-top:12px" },
+          `${checklist.filter((s) => s.done).length} of ${STEPS.length} first steps done`)));
+    } else {
+      content.append(el("section", { class: "card next-step-card" },
+        el("div", { class: "muted small" }, "KEEP GOING"),
+        el("h2", { style: "margin:6px 0" }, "Revise your weak topics"),
+        el("p", { class: "muted", style: "margin:0 0 14px" },
+          "You have finished the first steps. The best use of your next 20 minutes is a short revision session — weak topics resurface until they stick."),
+        el("a", { class: "btn accent big", href: "#/revision" }, "Start a revision session →")));
+    }
 
+    // ---- exam progress (simple) ----
+    content.append(el("h2", { class: "home-h2" }, "How far along are you"));
     for (const e of d.exams) {
       const p = e.progress;
       content.append(el("section", { class: "card" },
-        el("h3", { style: "margin:0 0 4px" }, e.name),
-        el("div", { class: "muted small" }, e.authority),
-        el("div", { style: "margin:10px 0 6px" }, progressbar(p.completion_pct)),
+        el("div", { style: "display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline" },
+          el("h3", { style: "margin:0" }, e.name),
+          el("span", { class: "badge " + (p.completion_pct >= 50 ? "EXACT_MATCH" : "INFO") },
+            `${p.completion_pct}% done`)),
+        el("div", { style: "margin:12px 0 8px" }, progressbar(p.completion_pct)),
         el("div", { class: "muted small" },
-          `${p.completed}/${p.total} micro-topics completed · ${p.in_progress} in progress (${p.completion_pct}%)`),
-        el("a", { href: `#/syllabus?exam=${e.id}`, class: "small" }, "Browse syllabus →")));
+          `${p.completed} of ${p.total} topics completed${p.in_progress ? ` · ${p.in_progress} in progress` : ""}`),
+        el("div", { class: "hero-actions", style: "margin-top:10px" },
+          el("a", { class: "btn ghost", href: `#/syllabus?exam=${e.id}` }, "Keep learning"),
+          el("a", { class: "btn ghost", href: "#/practice" }, "Practise"))));
     }
 
+    // ---- tasks ----
+    content.append(el("h2", { class: "home-h2" }, "Today's plan"));
     content.append(el("section", { class: "card" },
-      el("h3", { style: "margin-top:0" }, "Pending tasks"),
       d.pending_tasks.length
-        ? el("ul", null, d.pending_tasks.map((t) => el("li", null, t.title)))
-        : el("p", { class: "muted" }, "No pending tasks. Generate a combined study plan from the Planner."),
-      el("a", { href: "#/planner", class: "btn ghost" }, "Open planner")));
+        ? el("ul", { class: "task-list" }, d.pending_tasks.slice(0, 5).map((t) => el("li", null, t.title)))
+        : el("p", { class: "muted" },
+          "No tasks yet. Make a study plan and it will fill this list with what to do each day."),
+      el("a", { class: "btn ghost", href: "#/planner" }, "Open my study plan")));
+
+    // ---- everything else, tucked away ----
+    content.append(el("details", { class: "card", style: "padding:0" },
+      el("summary", { style: "padding:14px 18px;cursor:pointer" },
+        el("strong", null, "All learning tools"),
+        el("span", { class: "muted small", style: "margin-left:8px" }, "everything, if you want it")),
+      el("div", { style: "padding:4px 18px 16px" }, toolsGrid())));
   } catch (err) {
     content.innerHTML = "";
     if (err.status === 401) {
       content.append(el("section", { class: "card" },
-        el("h3", { style: "margin-top:0" }, "Sign in to see your dashboard"),
-        el("p", { class: "muted" }, "Your progress, plans and practice history are private to your account. Create a free account in seconds — no email verification needed."),
-        el("a", { class: "btn accent", href: "#/account" }, "Create account / Log in")));
+        el("h3", { style: "margin-top:0" }, "Your progress is saved on this device — and on your account"),
+        el("p", { class: "muted" }, "You can study without an account. A free account keeps your progress on every device you use."),
+        el("div", { class: "hero-actions", style: "margin-top:10px" },
+          el("a", { class: "btn accent", href: "#/syllabus" }, "Just keep studying"),
+          el("a", { class: "btn ghost", href: "#/account" }, "About accounts"))));
     } else {
       content.append(errorState(err, () => render(root)));
     }
@@ -57,41 +90,31 @@ export async function render(root) {
 }
 
 const TOOLS = [
-  { t: "Government Information Centre", href: "#/govinfo", live: true, d: "Auto-ingested official notifications & documents" },
-  { t: "Exam Overlap Intelligence", href: "#/overlap", live: true, d: "Micro-topic comparison across examinations" },
-  { t: "Exam Explorer", href: "#/exams", live: true, d: "Verified examination catalogue" },
-  { t: "Detailed Syllabus Explorer", href: "#/syllabus", live: true, d: "Official wording + AI-derived micro-topics" },
-  { t: "MCQ Practice", href: "#/practice", live: true, d: "Attempt, score and learn with explanations" },
-  { t: "Personalized Study Planner", href: "#/planner", live: true, d: "Combined, de-duplicated study sequence" },
-  { t: "Performance Analytics", href: "#/analytics", live: true, d: "Coverage, accuracy and recent attempts" },
-  { t: "Weakness Detection", href: "#/analytics", live: true, d: "Per-topic accuracy below the 60% threshold" },
-  { t: "Profile & Settings", href: "#/account", live: true, d: "Your account and sessions" },
-  { t: "AI Study Mentor", href: "#/mentor", key: true, d: "Doubt-solving via your own API key" },
-  { t: "Previous-Year Questions", href: "#/pyqs", d: "Only officially sourced PYQs" },
-  { t: "Full-Length Mock Tests", href: "#/mocks", d: "Official marking schemes" },
-  { t: "Mains Answer Writing", href: "#/mains", d: "Timed practice with rubrics" },
-  { t: "AI Answer Evaluation", href: "#/answer-eval", d: "Rubric-based advisory feedback" },
-  { t: "Current Affairs", href: "#/current-affairs", d: "Sourced monthly compilations" },
-  { t: "Smart Revision Centre", href: "#/revision", d: "Spaced repetition on weak topics" },
-  { t: "Flashcards", href: "#/flashcards", d: "From verified micro-topics" },
-  { t: "Mind Maps", href: "#/mindmaps", d: "Subject → topic hierarchies" },
-  { t: "Topic-wise Notes", href: "#/notes", d: "Private notes per micro-topic" },
-  { t: "Bookmarks", href: "#/bookmarks", d: "Save topics and questions" },
-  { t: "Learning Recommendations", href: "#/recommendations", d: "What to study next, and why" },
+  { t: "Choose your exam", href: "#/exams", d: "What we support today" },
+  { t: "Syllabus", href: "#/syllabus", d: "Official wording, small topics" },
+  { t: "Practice questions", href: "#/practice", d: "With explanations" },
+  { t: "Mock tests", href: "#/mocks", d: "Timed, with a score card" },
+  { t: "Mains writing", href: "#/mains", d: "Timed answers, honest self-scoring" },
+  { t: "Flashcards", href: "#/flashcards", d: "Quick revision" },
+  { t: "Topic map", href: "#/mindmaps", d: "Whole subject at a glance" },
+  { t: "What to revise", href: "#/revision", d: "Weak topics first" },
+  { t: "Study plan", href: "#/planner", d: "What to do each day" },
+  { t: "Strengths & weaknesses", href: "#/analytics", d: "Per-topic accuracy" },
+  { t: "Suggestions for you", href: "#/recommendations", d: "What to study next, and why" },
+  { t: "Compare two exams", href: "#/overlap", d: "What overlaps, what doesn't" },
+  { t: "Past papers", href: "#/pyqs", d: "Official papers with sources" },
+  { t: "Current affairs", href: "#/current-affairs", d: "Official releases" },
+  { t: "Government updates", href: "#/govinfo", d: "Notifications and documents" },
+  { t: "My notes", href: "#/notes", d: "Saved topic by topic" },
+  { t: "Saved items", href: "#/bookmarks", d: "Your bookmarks" },
+  { t: "Ask a question", href: "#/mentor", d: "AI study help (needs server setup)" },
+  { t: "AI answer evaluation", href: "#/answer-eval", d: "Advisory feedback (needs server setup)" },
+  { t: "How this works", href: "#/methodology", d: "Our data, honestly explained" },
 ];
 
 function toolsGrid() {
-  return el("section", { class: "card" },
-    el("h3", { style: "margin:0 0 4px" }, "All learning tools"),
-    el("p", { class: "muted small", style: "margin:0 0 12px" }, "Labelled honestly: LIVE means fully functional today; PLANNED pages describe exactly what they will do once their data engine exists."),
-    el("div", { class: "tools-grid" },
-      TOOLS.map((x) => el("a", { class: "tool-card" + (x.live ? " live" : ""), href: x.href },
-        el("span", { class: "tool-status " + (x.live ? "live" : x.key ? "key" : "soon") },
-          x.live ? "LIVE" : x.key ? "NEEDS KEY" : "PLANNED"),
-        el("strong", null, x.t),
-        el("span", { class: "muted small" }, x.d)))));
-}
-
-function miniStat(n, lbl) {
-  return el("div", { class: "stat accent" }, el("div", { class: "num" }, n), el("div", { class: "lbl" }, lbl));
+  return el("div", { class: "tools-grid" },
+    TOOLS.map((x) => el("a", { class: "tool-card live", href: x.href },
+      el("strong", null, x.t),
+      el("span", { class: "muted small" }, x.d))));
 }
