@@ -981,7 +981,6 @@ def pyqs(exam_id: str, topic: str | None = None):
     for r in rows:
         r["options"] = json.loads(r.pop("options_json") or "[]")
     return {"exam_id": exam_id, "questions": rows, "papers": papers,
-            "query_errors": [e for e in (rows_err, papers_err) if e],
             "note": ("Only questions traceable to an official paper appear as OFFICIAL_PYQ. "
                      "No official PYQs have been ingested yet — the pipeline accepts them via the "
                      "government-source engine and the admin review queue. "
