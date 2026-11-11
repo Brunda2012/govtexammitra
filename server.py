@@ -713,6 +713,16 @@ def plan_preview(exam_a: str, exam_b: str):
         conn.close()
 
 app.include_router(api)
+
+# Static assets: always revalidate (ETag 304 when unchanged) so a deploy is
+# picked up on the next load instead of a stale cached module breaking the SPA.
+@app.middleware("http")
+async def static_revalidate(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static") or request.url.path == "/":
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 app.mount("/static", StaticFiles(directory=os.path.join(BASE, "static")), name="static")
 
 @app.get("/", include_in_schema=False)

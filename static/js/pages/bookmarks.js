@@ -1,7 +1,7 @@
 // Bookmarks — saved topics, questions and planner tasks. One-click save from
 // syllabus / practice / planner; device mode stores locally.
 import { store } from "../store.js";
-import { el, emptyState, errorState, pageHead } from "../ui.js";
+import { el, emptyState, errorState, pageHead, loading } from "../ui.js";
 
 export async function render(root) {
   root.innerHTML = "";
@@ -42,11 +42,4 @@ export async function render(root) {
     content.innerHTML = "";
     content.append(errorState(err, () => render(root)));
   }
-}
-
-function loading() {
-  const d = document.createElement("div");
-  d.className = "spinner";
-  d.setAttribute("role", "status");
-  return d;
 }
